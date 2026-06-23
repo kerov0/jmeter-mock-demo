@@ -1,0 +1,95 @@
+name: JMeter Mock Performance Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      users:
+        description: "Number of virtual users"
+        required: true
+        default: "5"
+      rampup:
+        description: "Ramp-up period in seconds"
+        required: true
+        default: "10"
+      loops:
+        description: "Loop count"
+        required: true
+        default: "5"
+
+jobs:
+  jmeter-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Start mock API
+        run: |
+          npm start > mock-api.log 2>&1 &
+          for i in {1..10}; do
+            if curl -s http://localhost:3000/health; then
+              echo "Mock API is ready"
+              exit 0
+            fi
+            echo "Waiting for mock API..."
+            sleep 2
+          done
+          echo "Mock API did not start in time"
+          cat mock-api.log
+          exit 1
+
+      - name: Install JMeter
+        run: |
+          JMETER_VERSION=5.6.3
+          wget https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-${JMETER_VERSION}.tgz
+          tar -xzf apache-jmeter-${JMETER_VERSION}.tgz
+          echo "$GITHUB_WORKSPACE/apache-jmeter-${JMETER_VERSION}/bin" >> $GITHUB_PATH
+
+      - name: Run JMeter test
+        run: |
+          mkdir -p results reports/html
+          jmeter -n \
+            -t tests/mock-api-load-test.jmx \
+            -l results/results.jtl \
+            -e \
+            -o reports/html \
+            -Jusers=${{ github.event.inputs.users }} \
+            -Jrampup=${{ github.event.inputs.rampup }} \
+            -Jloops=${{ github.event.inputs.loops }}
+
+      - name: Upload JMeter HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-html-report
+          path: reports/html
+
+      - name: Upload raw JMeter results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jmeter-raw-results
+          path: results/results.jtl
+
+      - name: Fail if JMeter has errors
+        shell: bash
+        run: |
+          if grep -q 's="false"' results/results.jtl; then
+            echo "JMeter test contains failed samples"
+            exit 1
+          fi
