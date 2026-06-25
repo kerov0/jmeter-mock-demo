@@ -1,52 +1,120 @@
 # JMeter Mock Performance Testing Demo
 
-This project demonstrates a minimal performance testing workflow using Apache JMeter with a local, predictable mock API for safe load testing and experimentation.
+A small, controlled sandbox project for refreshing and demonstrating the end-to-end Apache JMeter performance testing workflow.
 
-## Project Overview
+The purpose of this repository is not to build a complex backend application. The purpose is to make the full performance testing loop visible and repeatable:
 
-A complete example of:
-- **Mock API**: Lightweight Node.js/Fastify server with realistic endpoints
-- **Performance Testing**: Apache JMeter test plans for load and stress testing
-- **Test Execution**: Non-GUI mode for CI/CD integration
-- **Reporting**: HTML dashboards and metrics visualization
-- **Automation**: GitHub Actions workflow for test runs and artifact management
+1. run a predictable local API,
+2. create JMeter scenarios in the GUI,
+3. execute them from the CLI in non-GUI mode,
+4. generate raw and HTML reports,
+5. publish reports as CI/CD artifacts.
 
-## Why local mock API?
+## Why this project exists
 
-Public sites and public APIs are not reliable or responsible targets for load testing. A local mock API provides:
-- **Predictable behavior** - consistent response times and data
-- **Controlled environment** - no impact on production systems
-- **Safe experimentation** - unlimited testing without rate limits or bans
-- **Reproducible results** - identical conditions across test runs
+This project was created as a practical refresher for JMeter and performance testing fundamentals.
 
-## Getting Started
+The immediate goal is to have a lightweight, hands-on setup that can be used to discuss performance testing workflow, tooling, and automation with colleagues without depending on a real client system or public website.
 
-### Run mock API
+It focuses on the mechanics that matter in real performance testing work:
+
+- controlled test target,
+- clear test scenarios,
+- assertions for functional correctness,
+- parameterized load profiles,
+- CLI execution,
+- reproducible reports,
+- CI/CD artifact handling.
+
+## Project scope
+
+This repository contains:
+
+- a local Node.js/Fastify mock API,
+- a project structure for JMeter test plans,
+- a place for raw JMeter result files,
+- a place for generated HTML reports,
+- a GitHub Actions workflow skeleton for CI execution and report artifact publishing.
+
+The current API is intentionally simple. It exists so JMeter scenarios can be developed safely and predictably.
+
+## Project structure
+
+```text
+jmeter-mock-demo/
+├── src/
+│   └── server.js
+├── tests/
+│   └── mock-api-load-test.jmx
+├── results/
+│   └── results.jtl
+├── reports/
+│   └── html/
+├── .github/
+│   └── workflows/
+│       └── jmeter.yml
+├── package.json
+├── package-lock.json
+├── .gitignore
+└── README.md
+```
+
+Generated files under `results/` and `reports/` are ignored by Git. They should be produced locally or by CI and uploaded as artifacts when needed.
+
+## Why use a local mock API?
+
+Public websites and public APIs are not reliable or responsible targets for load testing. They may have rate limits, unstable response times, external network noise, or policies that prohibit automated load.
+
+A local mock API provides:
+
+- predictable behavior,
+- controlled data,
+- safe experimentation,
+- no impact on real systems,
+- reproducible test runs,
+- a simple target for learning JMeter mechanics.
+
+## Getting started
+
+Install dependencies:
 
 ```bash
 npm install
+```
+
+Start the mock API:
+
+```bash
 npm start
 ```
 
-The API will start on `http://localhost:3000`
+The API starts on:
 
-## API Endpoints
+```text
+http://localhost:3000
+```
+
+## API endpoints
 
 ### `GET /health`
+
 Health check endpoint to verify API availability.
 
-**Response (200):**
+Expected response: `200 OK`
+
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-06-23T10:27:36.731+02:00"
+  "timestamp": "2026-06-23T10:27:36.731Z"
 }
 ```
 
 ### `GET /products`
-Retrieve available products.
 
-**Response (200):**
+Returns a small static product list.
+
+Expected response: `200 OK`
+
 ```json
 {
   "products": [
@@ -58,9 +126,11 @@ Retrieve available products.
 ```
 
 ### `POST /orders`
-Create a new order.
 
-**Request:**
+Creates a mock order.
+
+Expected request:
+
 ```json
 {
   "customerId": "cust-123",
@@ -69,7 +139,8 @@ Create a new order.
 }
 ```
 
-**Response (201):**
+Expected response: `201 Created`
+
 ```json
 {
   "orderId": "order-1687519656731",
@@ -80,19 +151,167 @@ Create a new order.
 }
 ```
 
-**Response (400):** Missing required fields (`customerId`, `productId`, `quantity`)
+If required fields are missing, the endpoint returns `400 Bad Request`.
 
-## Performance Testing
+Required fields:
 
-### Test Coverage
+- `customerId`,
+- `productId`,
+- `quantity`.
 
-*(Performance test details and results will be added soon)*
+## JMeter scenario goal
 
-- Load testing scenarios
-- Stress testing limits
-- Response time analysis
-- Throughput metrics
+The first JMeter test plan should cover the basic happy path:
 
-### Running Tests
+```text
+Test Plan
+└── Thread Group
+    ├── HTTP Request Defaults
+    ├── HTTP Header Manager
+    ├── GET /health
+    ├── GET /products
+    ├── POST /orders
+    ├── Response Assertion - health
+    ├── Response Assertion - products
+    ├── Response Assertion - orders
+    └── View Results Tree / Summary Report
+```
 
-*(Instructions for running JMeter tests will be documented)*
+Initial load profile:
+
+```text
+Number of Threads: ${__P(users,5)}
+Ramp-up period: ${__P(rampup,10)}
+Loop Count: ${__P(loops,5)}
+```
+
+The test plan should be saved as:
+
+```text
+tests/mock-api-load-test.jmx
+```
+
+## Expected JMeter checks
+
+### `GET /health`
+
+- Method: `GET`
+- Path: `/health`
+- Expected response code: `200`
+- Optional response body assertion: contains `ok`
+
+### `GET /products`
+
+- Method: `GET`
+- Path: `/products`
+- Expected response code: `200`
+- Optional response body assertion: contains `products`
+
+### `POST /orders`
+
+- Method: `POST`
+- Path: `/orders`
+- Header: `Content-Type: application/json`
+- Header: `Accept: application/json`
+- Expected response code: `201`
+- Optional response body assertion: contains `orderId`
+
+Example body:
+
+```json
+{
+  "customerId": "customer-${__Random(1000,9999)}",
+  "productId": "p-001",
+  "quantity": 1
+}
+```
+
+## Running JMeter locally
+
+Make sure the API is running first:
+
+```bash
+npm start
+```
+
+Then run JMeter in non-GUI mode:
+
+```bash
+jmeter -n -t tests/mock-api-load-test.jmx -l results/results.jtl -e -o reports/html
+```
+
+If JMeter is not available on `PATH`, run it through the full path to `jmeter` or `jmeter.bat`.
+
+Example with custom load parameters:
+
+```bash
+jmeter -n \
+  -t tests/mock-api-load-test.jmx \
+  -l results/results.jtl \
+  -e \
+  -o reports/html \
+  -Jusers=10 \
+  -Jrampup=20 \
+  -Jloops=10
+```
+
+## Cleaning local reports before rerun
+
+JMeter expects the result file and report output directory to be clean.
+
+On macOS/Linux:
+
+```bash
+rm -f results/results.jtl
+rm -rf reports/html
+mkdir -p reports/html
+```
+
+On Windows PowerShell:
+
+```powershell
+Remove-Item .\results\results.jtl -ErrorAction SilentlyContinue
+Remove-Item .\reports\html -Recurse -Force -ErrorAction SilentlyContinue
+mkdir .\reports\html
+```
+
+## CI/CD direction
+
+The GitHub Actions workflow should eventually:
+
+1. check out the repository,
+2. install Node.js,
+3. install Java,
+4. install dependencies,
+5. start the mock API,
+6. wait until `/health` is available,
+7. install JMeter,
+8. run the JMeter plan in non-GUI mode,
+9. generate the HTML dashboard,
+10. upload the raw `.jtl` result and HTML dashboard as artifacts,
+11. optionally fail the workflow when JMeter samples fail.
+
+This makes the performance test output reviewable even when the pipeline fails.
+
+## Future improvements
+
+Possible next steps:
+
+- add more realistic mock endpoints,
+- add negative scenarios,
+- add CSV-driven test data,
+- add environment variables for host and port,
+- add separate smoke/load/stress profiles,
+- add threshold checks for error rate or response time,
+- publish the report as a GitHub Pages artifact or workflow artifact,
+- add a short architecture diagram or workflow overview.
+
+## Current status
+
+Initial repository and mock API are in place.
+
+Next implementation step:
+
+```text
+Create and commit tests/mock-api-load-test.jmx from the JMeter GUI.
+```
