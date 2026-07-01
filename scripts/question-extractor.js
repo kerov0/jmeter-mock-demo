@@ -1,71 +1,65 @@
 const fs = require("node:fs");
+const path = require("node:path");
 
-const inputPath = process.argv[2] || "elements.json";
-const outputPath = process.argv[3] || "question-identifiers.csv";
+const DEFAULT_INPUT_PATH = "data/elements 2.txt";
+const DEFAULT_OUTPUT_PATH = "data/question-identifiers.csv";
+const QUESTION_TYPE = "Question";
+const ITM_IDENTIFIER_PATTERN = /\bidentifier=\\?"(ITM[^"\\]*)\\?"/;
 
-const raw = fs.readFileSync(inputPath, "utf8");
+const inputPath = process.argv[2] || DEFAULT_INPUT_PATH;
+const outputPath = process.argv[3] || DEFAULT_OUTPUT_PATH;
 
-// Supports either:
-// 1. a pure JSON array
-// 2. a JS file containing: const something = `[ ... ]`
-function extractJsonArray(rawText) {
+function readInput(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function parseElements(rawText) {
   const trimmed = rawText.trim();
 
   if (trimmed.startsWith("[")) {
     return JSON.parse(trimmed);
   }
 
-  const templateArrayMatch = rawText.match(/`(\[\s*[\s\S]*?\])`/);
+  const embeddedJson = rawText.match(/`(\[\s*[\s\S]*?\])`/);
 
-  if (!templateArrayMatch) {
-    throw new Error("Could not find a JSON array in the input file.");
+  if (!embeddedJson) {
+    throw new Error("Input does not contain a JSON array.");
   }
 
-  return JSON.parse(templateArrayMatch[1]);
+  return JSON.parse(embeddedJson[1]);
 }
 
 function extractItmIdentifier(content) {
-  if (!content) return null;
-
-  // Handles normal XML:
-  // identifier="ITM-..."
-  //
-  // Also handles escaped XML from JS/JSON examples:
-  // identifier=\"ITM-...\"
-  const match = content.match(/\bidentifier=\\?"(ITM[^"\\]*)\\?"/);
-
-  return match ? match[1] : null;
+  return content?.match(ITM_IDENTIFIER_PATTERN)?.[1] || null;
 }
 
-const elements = extractJsonArray(raw);
-
-const rows = [];
-
-for (const element of elements) {
-  if (element.element_type !== "Question") {
-    continue;
-  }
-
-  const id = element.id;
-  const identifier = extractItmIdentifier(element.content);
-
-  if (!id || !identifier) {
-    console.warn("Skipping question because id or identifier is missing:", {
-      id,
-      identifier,
-    });
-    continue;
-  }
-
-  rows.push({ id, identifier });
+function mapQuestionIdentifiers(elements) {
+  return elements
+    .filter((element) => element.element_type === QUESTION_TYPE)
+    .map((element) => ({
+      id: element.id,
+      identifier: extractItmIdentifier(element.content),
+    }))
+    .filter(({ id, identifier }) => id && identifier);
 }
 
-const csv = [
-  "id,identifier",
-  ...rows.map((row) => `${row.id},${row.identifier}`),
-].join("\n");
+function toCsv(rows) {
+  return [
+    "id,identifier",
+    ...rows.map(({ id, identifier }) => `${id},${identifier}`),
+  ].join("\n");
+}
 
-fs.writeFileSync(outputPath, csv, "utf8");
+function writeOutput(filePath, content) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, "utf8");
+}
 
-console.log(`Extracted ${rows.length} question identifiers.`);
+const rawInput = readInput(inputPath);
+const elements = parseElements(rawInput);
+const questionIdentifiers = mapQuestionIdentifiers(elements);
+
+writeOutput(outputPath, toCsv(questionIdentifiers));
+
+console.log(`Extracted ${questionIdentifiers.length} question identifiers.`);
 console.log(`Output written to ${outputPath}`);
